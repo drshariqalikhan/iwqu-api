@@ -12,7 +12,7 @@ const {
 dotenv.config();
 const app = express();
 
-// Enable CORS for all origins (or restrict to your frontend URL)
+// Enable CORS for all origins (or restrict to your frontend URL)..
 app.use(cors());
 app.use(express.json());
 
