@@ -1,8 +1,15 @@
 const ISHARES_CSV_URL = "https://www.ishares.com/uk/individual/en/products/270054/ishares-msci-world-quality-factor-ucits-etf/1506575576011.ajax?fileType=csv&fileName=IWQU_holdings&dataType=fund";
 const YAHOO_BASE = "https://query1.finance.yahoo.com/v8/finance/chart/";
 
+// Mimic a real browser to prevent 403 Forbidden errors
+const HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'application/json',
+  'Referer': 'https://finance.yahoo.com'
+};
+
 async function fetchETFHoldings(limit) {
-  const response = await fetch(ISHARES_CSV_URL);
+  const response = await fetch(ISHARES_CSV_URL, { headers: HEADERS });
   if (!response.ok) throw new Error("ETF Source Offline");
   const csvText = await response.text();
   const lines = csvText.split('\n');
@@ -30,10 +37,16 @@ async function fetchETFHoldings(limit) {
 }
 
 async function fetchStockData(symbol) {
-  const response = await fetch(`${YAHOO_BASE}${symbol}?interval=1wk&range=5y`);
-  if (!response.ok) throw new Error(`Market API error: ${symbol}`);
+  const url = `${YAHOO_BASE}${symbol}?interval=1wk&range=5y`;
+  const response = await fetch(url, { headers: HEADERS });
+  if (!response.ok) {
+    const status = response.status;
+    throw new Error(`Market API error ${status}: ${symbol}`);
+  }
   const data = await response.json();
-  return data.chart?.result?.[0];
+  const result = data.chart?.result?.[0];
+  if (!result) throw new Error(`No data for ${symbol}`);
+  return result;
 }
 
 function calculateSMA(quotes, windowSize) {

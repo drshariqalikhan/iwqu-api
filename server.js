@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
-// This assumes you have screener.js in the same folder
 const { 
   fetchETFHoldings, 
   fetchStockData, 
@@ -12,9 +11,11 @@ const {
 dotenv.config();
 const app = express();
 
-// Enable CORS for all origins (or restrict to your frontend URL)..
 app.use(cors());
 app.use(express.json());
+
+// Helper to wait between requests to avoid rate limits
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 app.get('/api/scan', async (req, res) => {
   console.log('--- Starting New Scan Request ---');
@@ -25,12 +26,14 @@ app.get('/api/scan', async (req, res) => {
     
     for (const holding of holdings) {
       try {
+        // Add a 250ms delay between each stock fetch to avoid Yahoo blocking us
+        await sleep(250);
+        
         const data = await fetchStockData(holding.symbol);
         const price = data.meta.regularMarketPrice;
         const sma100 = calculateSMA(data, 100);
         const medRet = calculateMedianAnnualReturn(data);
         
-        // Value Logic: Price < 105% of 100-week SMA
         if (price < (sma100 * 1.05)) {
           results.push({ 
             symbol: holding.symbol, 
