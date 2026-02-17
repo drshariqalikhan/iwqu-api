@@ -1,7 +1,6 @@
 const ISHARES_CSV_URL = "https://www.ishares.com/uk/individual/en/products/270054/ishares-msci-world-quality-factor-ucits-etf/1506575576011.ajax?fileType=csv&fileName=IWQU_holdings&dataType=fund";
 const YAHOO_BASE = "https://query1.finance.yahoo.com/v8/finance/chart/";
 
-// Mimic a real browser to prevent 403 Forbidden errors
 const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   'Accept': 'application/json',
@@ -39,10 +38,7 @@ async function fetchETFHoldings(limit) {
 async function fetchStockData(symbol) {
   const url = `${YAHOO_BASE}${symbol}?interval=1wk&range=5y`;
   const response = await fetch(url, { headers: HEADERS });
-  if (!response.ok) {
-    const status = response.status;
-    throw new Error(`Market API error ${status}: ${symbol}`);
-  }
+  if (!response.ok) throw new Error(`Market API error ${response.status}: ${symbol}`);
   const data = await response.json();
   const result = data.chart?.result?.[0];
   if (!result) throw new Error(`No data for ${symbol}`);

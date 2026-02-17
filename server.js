@@ -14,25 +14,35 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Helper to wait between requests to avoid rate limits
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 app.get('/api/scan', async (req, res) => {
   console.log('--- Starting New Scan Request ---');
   try {
     const limit = parseInt(req.query.limit) || 20;
+    
+    // 1. Calculate SPY Benchmark first
+    console.log('Calculating SPY benchmark...');
+    const spyData = await fetchStockData('SPY');
+    const spyMedianReturn = calculateMedianAnnualReturn(spyData);
+    
+    if (spyMedianReturn === 0) throw new Error("SPY benchmark calculation failed");
+
+    // 2. Fetch ETF Holdings
     const holdings = await fetchETFHoldings(limit);
     const results = [];
     
     for (const holding of holdings) {
       try {
-        // Add a 250ms delay between each stock fetch to avoid Yahoo blocking us
-        await sleep(250);
+        await sleep(250); // Throttling
         
         const data = await fetchStockData(holding.symbol);
         const price = data.meta.regularMarketPrice;
         const sma100 = calculateSMA(data, 100);
-        const medRet = calculateMedianAnnualReturn(data);
+        const stockMedianReturn = calculateMedianAnnualReturn(data);
+        
+        // 3. Calculate Relative Return vs SPY
+        const relativeReturn = stockMedianReturn / spyMedianReturn;
         
         if (price < (sma100 * 1.05)) {
           results.push({ 
@@ -40,10 +50,10 @@ app.get('/api/scan', async (req, res) => {
             sector: holding.sector, 
             price, 
             sma100, 
-            medianReturn: medRet,
+            relativeReturn,
             diffPercent: ((price - sma100) / sma100) * 100
           });
-          console.log(`Match Found: ${holding.symbol}`);
+          console.log(`Match: ${holding.symbol} (Strength: ${relativeReturn.toFixed(2)}x)`);
         }
       } catch (err) { 
         console.error(`Skipping ${holding.symbol}: ${err.message}`); 
