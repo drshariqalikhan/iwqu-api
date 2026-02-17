@@ -5,7 +5,9 @@ const {
   fetchETFHoldings, 
   fetchStockData, 
   calculateSMA, 
-  calculateMedianAnnualReturn 
+  calculateMedianAnnualReturn,
+  fetchFinvizMetrics,
+  calculateDCF
 } = require('./screener');
 
 dotenv.config();
@@ -20,40 +22,44 @@ app.get('/api/scan', async (req, res) => {
   console.log('--- Starting New Scan Request ---');
   try {
     const limit = parseInt(req.query.limit) || 20;
-    
-    // 1. Calculate SPY Benchmark first
-    console.log('Calculating SPY benchmark...');
     const spyData = await fetchStockData('SPY');
     const spyMedianReturn = calculateMedianAnnualReturn(spyData);
     
     if (spyMedianReturn === 0) throw new Error("SPY benchmark calculation failed");
 
-    // 2. Fetch ETF Holdings
     const holdings = await fetchETFHoldings(limit);
     const results = [];
     
     for (const holding of holdings) {
       try {
-        await sleep(250); // Throttling
+        await sleep(250); 
         
         const data = await fetchStockData(holding.symbol);
         const price = data.meta.regularMarketPrice;
         const sma100 = calculateSMA(data, 100);
         const stockMedianReturn = calculateMedianAnnualReturn(data);
-        
-        // 3. Calculate Relative Return vs SPY
         const relativeReturn = stockMedianReturn / spyMedianReturn;
         
         if (price < (sma100 * 1.05)) {
+          // Fetch Finviz Fundamentals
+          const { eps, growth5Y } = await fetchFinvizMetrics(holding.symbol);
+          let fairValue = null;
+          
+          if (eps !== null && growth5Y !== null) {
+             // Defaults: Terminal 2.5%, Discount 9.5%
+             fairValue = calculateDCF(eps, growth5Y / 100, 0.025, 0.095);
+          }
+          
           results.push({ 
             symbol: holding.symbol, 
             sector: holding.sector, 
             price, 
             sma100, 
             relativeReturn,
-            diffPercent: ((price - sma100) / sma100) * 100
+            diffPercent: ((price - sma100) / sma100) * 100,
+            fairValue
           });
-          console.log(`Match: ${holding.symbol} (Strength: ${relativeReturn.toFixed(2)}x)`);
+          console.log(`Match: ${holding.symbol} | FV: ${fairValue}`);
         }
       } catch (err) { 
         console.error(`Skipping ${holding.symbol}: ${err.message}`); 
