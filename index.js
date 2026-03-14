@@ -16,6 +16,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// 👇 ADD THIS LINE to serve your frontend dashboard 👇
+app.use(express.static(path.join(__dirname, 'public')));
+
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 app.get('/', (req, res) => {

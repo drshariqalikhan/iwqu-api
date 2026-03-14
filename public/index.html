@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IWQU Stock Screener</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen p-6">
+
+    <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <header class="flex flex-col md:flex-row justify-between items-center bg-gray-800 p-6 rounded-xl shadow-lg mb-8 border border-gray-700">
+            <div>
+                <h1 class="text-3xl font-bold text-blue-400">📈 IWQU Screener</h1>
+                <p class="text-gray-400 text-sm mt-1">Scan MSCI World Quality Factor ETF for undervalued stocks.</p>
+            </div>
+            
+            <div class="flex items-center space-x-4 mt-4 md:mt-0">
+                <div class="flex flex-col">
+                    <label class="text-xs text-gray-400 mb-1">Max Stocks to Scan</label>
+                    <input type="number" id="limitInput" value="20" class="bg-gray-700 text-white px-4 py-2 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 w-24">
+                </div>
+                <button id="scanBtn" class="mt-5 bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2 px-6 rounded-lg shadow transition duration-200">
+                    Run Scan
+                </button>
+            </div>
+        </header>
+
+        <!-- Loading State -->
+        <div id="loader" class="hidden flex flex-col items-center justify-center py-20">
+            <svg class="animate-spin h-10 w-10 text-blue-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="text-blue-400 font-medium animate-pulse">Scanning the market... this takes ~250ms per stock.</p>
+        </div>
+
+        <!-- Error Message -->
+        <div id="errorMsg" class="hidden bg-red-900 border border-red-700 text-red-200 px-4 py-3 rounded relative mb-6" role="alert">
+            <strong class="font-bold">Error!</strong>
+            <span class="block sm:inline" id="errorText">Something went wrong.</span>
+        </div>
+
+        <!-- Results Table -->
+        <div id="resultsContainer" class="hidden bg-gray-800 rounded-xl shadow-lg border border-gray-700 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-gray-700 text-gray-300 text-sm uppercase tracking-wider">
+                            <th class="p-4 font-semibold">Symbol</th>
+                            <th class="p-4 font-semibold">Sector</th>
+                            <th class="p-4 font-semibold">Price</th>
+                            <th class="p-4 font-semibold">SMA 100</th>
+                            <th class="p-4 font-semibold">Diff %</th>
+                            <th class="p-4 font-semibold">Rel Return</th>
+                            <th class="p-4 font-semibold">Fair Value (DCF)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody" class="divide-y divide-gray-700">
+                        <!-- Rows will be populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+            <div id="noResults" class="hidden p-6 text-center text-gray-400">
+                No undervalued stocks found in this batch. Try scanning more!
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const scanBtn = document.getElementById('scanBtn');
+        const limitInput = document.getElementById('limitInput');
+        const loader = document.getElementById('loader');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const tableBody = document.getElementById('tableBody');
+        const errorMsg = document.getElementById('errorMsg');
+        const errorText = document.getElementById('errorText');
+        const noResults = document.getElementById('noResults');
+
+        const formatCurrency = (val) => val ? `$${val.toFixed(2)}` : 'N/A';
+        const formatPercent = (val) => val ? `${val.toFixed(2)}%` : 'N/A';
+
+        scanBtn.addEventListener('click', async () => {
+            // Reset UI
+            loader.classList.remove('hidden');
+            resultsContainer.classList.add('hidden');
+            errorMsg.classList.add('hidden');
+            noResults.classList.add('hidden');
+            tableBody.innerHTML = '';
+            scanBtn.disabled = true;
+            scanBtn.classList.add('opacity-50', 'cursor-not-allowed');
+
+            try {
+                const limit = limitInput.value || 20;
+                // Fetch from your existing API endpoint
+                const response = await fetch(`/api/scan?limit=${limit}`);
+                const json = await response.json();
+
+                if (!response.ok || !json.success) {
+                    throw new Error(json.error || 'Failed to fetch data');
+                }
+
+                if (json.data.length === 0) {
+                    noResults.classList.remove('hidden');
+                } else {
+                    json.data.forEach(stock => {
+                        const tr = document.createElement('tr');
+                        tr.className = "hover:bg-gray-750 transition duration-150";
+                        
+                        // Color coding the Difference %
+                        const diffColor = stock.diffPercent < 0 ? 'text-green-400' : 'text-red-400';
+                        
+                        // Checking if Undervalued vs DCF Fair Value
+                        let fvDisplay = formatCurrency(stock.fairValue);
+                        if (stock.fairValue && stock.price < stock.fairValue) {
+                            fvDisplay = `<span class="text-green-400 font-bold">${fvDisplay} (Undervalued)</span>`;
+                        } else if (stock.fairValue) {
+                            fvDisplay = `<span class="text-red-400">${fvDisplay}</span>`;
+                        }
+
+                        tr.innerHTML = `
+                            <td class="p-4 font-bold text-blue-300">${stock.symbol}</td>
+                            <td class="p-4 text-gray-400 text-sm">${stock.sector}</td>
+                            <td class="p-4 text-white">${formatCurrency(stock.price)}</td>
+                            <td class="p-4 text-gray-300">${formatCurrency(stock.sma100)}</td>
+                            <td class="p-4 font-semibold ${diffColor}">${formatPercent(stock.diffPercent)}</td>
+                            <td class="p-4 text-gray-300">${stock.relativeReturn ? stock.relativeReturn.toFixed(2) + 'x' : 'N/A'}</td>
+                            <td class="p-4">${fvDisplay}</td>
+                        `;
+                        tableBody.appendChild(tr);
+                    });
+                }
+                resultsContainer.classList.remove('hidden');
+
+            } catch (err) {
+                errorText.innerText = err.message;
+                errorMsg.classList.remove('hidden');
+            } finally {
+                loader.classList.add('hidden');
+                scanBtn.disabled = false;
+                scanBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        });
+    </script>
+</body>
+</html>
