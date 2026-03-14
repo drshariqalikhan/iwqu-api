@@ -1,6 +1,6 @@
 const ISHARES_CSV_URL = "https://www.ishares.com/uk/individual/en/products/270054/ishares-msci-world-quality-factor-ucits-etf/1506575576011.ajax?fileType=csv&fileName=IWQU_holdings&dataType=fund";
 const YAHOO_BASE = "https://query1.finance.yahoo.com/v8/finance/chart/";
-const BROWSER_PROXY = "https://cors-3bvl.onrender.com/proxy?url=";
+const BROWSER_PROXY = "https://cors-3bvl.onrender.com/proxy?url="; 
 
 const getUrl = (target) => {
   const isNode = typeof window === 'undefined' || process.env.IS_BACKEND === 'true';
@@ -37,7 +37,6 @@ async function fetchETFHoldings(limit) {
 
 async function fetchStockData(symbol) {
   const url = `${YAHOO_BASE}${symbol}?interval=1wk&range=5y`;
-  // Add a simple User-Agent to prevent Yahoo from blocking the cloud IP
   const response = await fetch(getUrl(url), {
     headers: { 'User-Agent': 'Mozilla/5.0' }
   });
@@ -49,20 +48,63 @@ async function fetchStockData(symbol) {
 }
 
 async function fetchFinvizMetrics(symbol) {
-  const targetUrl = `https://finviz.com/quote.ashx?t=${symbol}`;
-  const response = await fetch(getUrl(targetUrl), {
-    headers: { 'User-Agent': 'Mozilla/5.0' }
-  });
-  if (!response.ok) return { eps: null, growth5Y: null };
-  const html = await response.text();
-  
-  const getVal = (key) => {
-    const regex = new RegExp(`>${key}<\\/td>.*?<b>([0-9.-]+)%?<\\/b>`, 's');
-    const match = html.match(regex);
-    if (match && match[1] && match[1] !== '-') return parseFloat(match[1]);
-    return null;
-  };
-  return { eps: getVal('EPS \\(ttm\\)'), growth5Y: getVal('EPS next 5Y') };
+  // 1. Try Yahoo Finance API first (It does not block Render IPs like Finviz does)
+  try {
+    const yahooUrl = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=defaultKeyStatistics,earningsTrend`;
+    const yRes = await fetch(getUrl(yahooUrl), {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+    });
+    
+    if (yRes.ok) {
+      const yData = await yRes.json();
+      const result = yData.quoteSummary?.result?.[0];
+      
+      if (result) {
+        let eps = result.defaultKeyStatistics?.trailingEps?.raw 
+               || result.defaultKeyStatistics?.forwardEps?.raw 
+               || null;
+               
+        let growth5Y = null;
+        const trends = result.earningsTrend?.trend ||[];
+        const fiveYearTrend = trends.find(t => t.period === '+5y');
+        
+        if (fiveYearTrend && fiveYearTrend.growth && typeof fiveYearTrend.growth.raw === 'number') {
+          growth5Y = fiveYearTrend.growth.raw * 100; // Convert 0.145 to 14.5% for DCF math compatibility
+        }
+        
+        // If Yahoo successfully provided both metrics, return them immediately!
+        if (eps !== null && growth5Y !== null) {
+          return { eps, growth5Y };
+        }
+      }
+    }
+  } catch (err) {
+    // Silently fall through to Finviz if Yahoo fails
+  }
+
+  // 2. Fallback to Finviz scraping with upgraded "stealth" Browser Headers
+  try {
+    const targetUrl = `https://finviz.com/quote.ashx?t=${symbol}`;
+    const response = await fetch(getUrl(targetUrl), {
+      headers: { 
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5'
+      }
+    });
+    if (!response.ok) return { eps: null, growth5Y: null };
+    const html = await response.text();
+    
+    const getVal = (key) => {
+      const regex = new RegExp(`>${key}<\\/td>.*?<b>([0-9.-]+)%?<\\/b>`, 's');
+      const match = html.match(regex);
+      if (match && match[1] && match[1] !== '-') return parseFloat(match[1]);
+      return null;
+    };
+    return { eps: getVal('EPS \\(ttm\\)'), growth5Y: getVal('EPS next 5Y') };
+  } catch (err) {
+    return { eps: null, growth5Y: null };
+  }
 }
 
 function calculateDCF(eps, growthRate5Y, terminalGrowthRate, discountRate) {
