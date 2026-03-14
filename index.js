@@ -18,6 +18,10 @@ app.use(express.json());
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+app.get('/', (req, res) => {
+  res.send('📈 Stock Screener API is running successfully! To scan, visit /api/scan?limit=5');
+});
+
 app.get('/api/scan', async (req, res) => {
   console.log('--- Starting New Scan Request ---');
   try {
