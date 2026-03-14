@@ -28,7 +28,7 @@ app.get('/api/scan', async (req, res) => {
     if (spyMedianReturn === 0) throw new Error("SPY benchmark calculation failed");
 
     const holdings = await fetchETFHoldings(limit);
-    const results = [];
+    const results =[];
     
     for (const holding of holdings) {
       try {
@@ -73,4 +73,4 @@ app.get('/api/scan', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Backend running on port ${PORT}`));//v3
+app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Backend running on port ${PORT}`));

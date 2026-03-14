@@ -1,6 +1,6 @@
 const ISHARES_CSV_URL = "https://www.ishares.com/uk/individual/en/products/270054/ishares-msci-world-quality-factor-ucits-etf/1506575576011.ajax?fileType=csv&fileName=IWQU_holdings&dataType=fund";
 const YAHOO_BASE = "https://query1.finance.yahoo.com/v8/finance/chart/";
-const BROWSER_PROXY = "https://cors-3bvl.onrender.com/proxy?url="; // Use example proxy
+const BROWSER_PROXY = "https://cors-3bvl.onrender.com/proxy?url=";
 
 const getUrl = (target) => {
   const isNode = typeof window === 'undefined' || process.env.IS_BACKEND === 'true';
@@ -9,11 +9,10 @@ const getUrl = (target) => {
 
 async function fetchETFHoldings(limit) {
   const response = await fetch(getUrl(ISHARES_CSV_URL));
-  // ... (CSV Parsing Logic same as before)
   if (!response.ok) throw new Error("ETF Source Offline");
   const csvText = await response.text();
   const lines = csvText.split('\n');
-  const holdings = [];
+  const holdings =[];
   let tickerIdx = -1, sectorIdx = -1;
   const csvSplitRegex = /,(?=(?:(?:[^"]*"){2})*[^"]*$)/;
 
@@ -38,7 +37,10 @@ async function fetchETFHoldings(limit) {
 
 async function fetchStockData(symbol) {
   const url = `${YAHOO_BASE}${symbol}?interval=1wk&range=5y`;
-  const response = await fetch(getUrl(url));
+  // Add a simple User-Agent to prevent Yahoo from blocking the cloud IP
+  const response = await fetch(getUrl(url), {
+    headers: { 'User-Agent': 'Mozilla/5.0' }
+  });
   if (!response.ok) throw new Error(`Market API error ${response.status}: ${symbol}`);
   const data = await response.json();
   const result = data.chart?.result?.[0];
@@ -48,7 +50,9 @@ async function fetchStockData(symbol) {
 
 async function fetchFinvizMetrics(symbol) {
   const targetUrl = `https://finviz.com/quote.ashx?t=${symbol}`;
-  const response = await fetch(getUrl(targetUrl));
+  const response = await fetch(getUrl(targetUrl), {
+    headers: { 'User-Agent': 'Mozilla/5.0' }
+  });
   if (!response.ok) return { eps: null, growth5Y: null };
   const html = await response.text();
   
@@ -76,15 +80,15 @@ function calculateDCF(eps, growthRate5Y, terminalGrowthRate, discountRate) {
 }
 
 function calculateSMA(quotes, windowSize) {
-  const closes = (quotes.indicators.quote[0].close || []).filter(p => p != null);
+  const closes = (quotes.indicators.quote[0].close ||[]).filter(p => p != null);
   if (closes.length < windowSize) throw new Error(`SMA${windowSize} data missing`);
   return closes.slice(-windowSize).reduce((a, b) => a + b, 0) / windowSize;
 }
 
 function calculateMedianAnnualReturn(quotes) {
-  const closes = (quotes.indicators.quote[0].close || []).filter(p => p != null);
+  const closes = (quotes.indicators.quote[0].close ||[]).filter(p => p != null);
   if (closes.length < 52) return 0;
-  const returns = [];
+  const returns =[];
   for (let i = closes.length - 1; i >= 52; i -= 52) {
     const end = closes[i], start = closes[i - 52];
     if (start > 0) returns.push(((end - start) / start) * 100);
